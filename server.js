@@ -9,8 +9,20 @@ const server = http.createServer((req, res) => {
     res.end('Multiplayer Game Server is Online');
 });
 
-// Attach the WebSocket server to the HTTP server setup
-const wss = new WebSocketServer({ server });
+// Force the WebSocket Server to ONLY look for the secure Render proxy path
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+    const { pathname } = new URL(request.url, `http://${request.headers.host}`);
+
+    if (pathname === '/ws') {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+            wss.emit('connection', ws, request);
+        });
+    } else {
+        socket.destroy();
+    }
+});
 
 console.log(`Multiplayer server running globally on port ${PORT}`);
 
@@ -83,7 +95,6 @@ wss.on('connection', (ws) => {
     });
 });
 
-// Start the combined server configuration
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server actively listening on port ${PORT}`);
 });
