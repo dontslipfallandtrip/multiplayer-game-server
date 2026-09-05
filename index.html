@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>16x16 Multiplayer Game</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #222;
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        overflow-y: auto;
+      }
+      #game-container {
+        position: relative;
+        width: 640px;
+        height: 640px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        background: #4caf50;
+      }
+      canvas {
+        background: #4caf50; /* Green Plot Floor */
+        display: block;
+      }
+      #chat-container {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 220px;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 8px;
+        border-radius: 6px;
+        color: white;
+        z-index: 5;
+        box-sizing: border-box;
+        display: none;
+      }
+      #chat-log {
+        height: 120px;
+        overflow-y: auto;
+        margin-bottom: 5px;
+        font-size: 12px;
+        word-wrap: break-word;
+      }
+      #chat-input {
+        width: 100%;
+        padding: 4px;
+        box-sizing: border-box;
+        background: #fff;
+        border: none;
+        border-radius: 3px;
+        font-size: 12px;
+      }
+      #login-screen {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 640px;
+        height: 640px;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 10;
+        color: white;
+      }
+      #name-input {
+        padding: 10px;
+        font-size: 16px;
+        border-radius: 4px;
+        border: none;
+        margin-bottom: 10px;
+        width: 200px;
+        text-align: center;
+      }
+      #start-btn {
+        padding: 10px 20px;
+        font-size: 16px;
+        background: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      #status-text {
+        margin-top: 15px;
+        font-size: 14px;
+        color: #ffcc00;
+      }
+      #mobile-controls {
+        display: none;
+        grid-template-columns: repeat(3, 60px);
+        grid-template-rows: repeat(3, 60px);
+        gap: 10px;
+        margin-top: 20px;
+        z-index: 8;
+      }
+      .dpad-btn {
+        background: #444;
+        color: white;
+        border: 2px solid #666;
+        border-radius: 10px;
+        font-size: 24px;
+        font-weight: bold;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        user-select: none;
+        cursor: pointer;
+      }
+      .dpad-btn:active {
+        background: #666;
+      }
+      @media (max-width: 660px) {
+        #game-container,
+        #login-screen {
+          width: 320px;
+          height: 320px;
+        }
+        canvas {
+          width: 320px;
+          height: 320px;
+        }
+        #mobile-controls {
+          display: grid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game-container">
+      <div id="login-screen">
+        <h2>Enter Your Username</h2>
+        <input type="text" id="name-input" placeholder="Nickname..." maxlength="12" />
+        <button id="start-btn" onclick="joinGame()">Join Game</button>
+        <div id="status-text"></div>
+      </div>
+      <div id="chat-container">
+        <div id="chat-log"></div>
+        <input type="text" id="chat-input" placeholder="Tap here to chat..." />
+      </div>
+      <canvas id="gameCanvas" width="640" height="640"></canvas>
+    </div>
+    <div id="mobile-controls">
+      <div></div>
+      <div class="dpad-btn" ontouchstart="handleMobileMove('up')">▲</div>
+      <div></div>
+      <div class="dpad-btn" ontouchstart="handleMobileMove('left')">◀</div>
+      <div></div>
+      <div class="dpad-btn" ontouchstart="handleMobileMove('right')">▶</div>
+      <div></div>
+      <div class="dpad-btn" ontouchstart="handleMobileMove('down')">▼</div>
+      <div></div>
+    </div>
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      const statusText = document.getElementById("status-text");
+
+      const MAP_SIZE = 16;
+      const TILE_SIZE = 40;
+
+      let socket;
+      let myId = "ID_" + Math.random().toString(36).substr(2, 4).toUpperCase();
+      let myPlayer = {
+        name: "Guest",
+        gridX: Math.floor(Math.random() * MAP_SIZE),
+        gridY: Math.floor(Math.random() * MAP_SIZE),
+        color: "#" + Math.floor(Math.random() * 16777215).toString(16),
+      };
+
+      let remotePlayers = {};
+
+      if ("ontouchstart" in window) {
+        document.getElementById("mobile-controls").style.display = "grid";
+      }
+
+      function joinGame() {
+        const inputName = document.getElementById("name-input").value.trim();
+        if (inputName !== "") {
+          myPlayer.name = inputName;
+        }
+
+        statusText.innerText = "Connecting to server... (May take 1 minute if waking up)";
+        document.getElementById("start-btn").disabled = true;
+
+        // Live Render Server URL link integrated directly:
+        socket = new WebSocket("wss://://onrender.com");
+
+        socket.onopen = () => {
+          document.getElementById("login-screen").style.display = "none";
+          document.getElementById("chat-container").style.display = "block";
+          appendMessage("System", `Connected as ${myPlayer.name}!`);
+          sendUpdate("join", myPlayer);
+          drawGame();
+        };
+
+        socket.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.type === "player_update") {
+            remotePlayers[data.id] = { ...data.payload, name: data.name };
+            drawGame();
+          }
+          if (data.type === "chat") {
+            appendMessage(data.sender, data.message);
+          }
+          if (data.type === "leave") {
+            delete remotePlayers[data.id];
+            drawGame();
+          }
+        };
+
+        socket.onerror = (error) => {
+          statusText.innerText = "Connection error. Is the server running?";
+          document.getElementById("start-btn").disabled = false;
+        };
+
+        socket.onclose = () => {
+          statusText.innerText = "Disconnected from server.";
+          document.getElementById("start-btn").disabled = false;
+        };
+      }
+
+      function sendUpdate(type, payload) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ id: myId, name: myPlayer.name, type: type, payload: payload }));
+        }
+      }
+
+      function drawGame() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        for (let i = 0; i <= MAP_SIZE; i++) {
+          ctx.beginPath();
+          ctx.moveTo(i * TILE_SIZE, 0);
+          ctx.lineTo(i * TILE_SIZE, canvas.height);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(0, i * TILE_SIZE);
+          ctx.lineTo(canvas.width, i * TILE_SIZE);
+          ctx.stroke();
+        }
+        for (let id in remotePlayers) {
+          let p = remotePlayers[id];
+          drawCharacter(p.gridX, p.gridY, p.color, p.name);
+        }
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          drawCharacter(myPlayer.gridX, myPlayer.gridY, myPlayer.color, myPlayer.name);
+        }
+      }
+
+      function drawCharacter(gridX, gridY, color, name) {
+        const pixelX = gridX * TILE_SIZE + TILE_SIZE / 2;
+        const pixelY = gridY * TILE_SIZE + TILE_SIZE / 2;
+        ctx.beginPath();
+        ctx.arc(pixelX, pixelY, 14, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.closePath();
+        ctx.fillStyle = "white";
+        ctx.font = "bold 11px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(name, pixelX, pixelY - 18);
+      }
+
+      window.addEventListener("keydown", (e) => {
+        if (!socket || socket.readyState !== WebSocket.OPEN || document.activeElement === chatInput) return;
+        let moved = false;
+        if ((e.key === "ArrowUp" || e.key === "w") && myPlayer.gridY > 0) {
+          myPlayer.gridY--;
+          moved = true;
+        }
+        if ((e.key === "ArrowDown" || e.key === "s") && myPlayer.gridY < MAP_SIZE - 1) {
+          myPlayer.gridY++;
+          moved = true;
+        }
+        if ((e.key === "ArrowLeft" || e.key === "a") && myPlayer.gridX > 0) {
+          myPlayer.gridX--;
+          moved = true;
+        }
+        if ((e.key === "ArrowRight" || e.key === "d") && myPlayer.gridX < MAP_SIZE - 1) {
+          myPlayer.gridX++;
+          moved = true;
+        }
+        if (moved) {
+          drawGame();
+          sendUpdate("player_update", myPlayer);
+        }
+      });
+
+      function handleMobileMove(dir) {
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        let moved = false;
+        if (dir === "up" && myPlayer.gridY > 0) {
+          myPlayer.gridY--;
+          moved = true;
+        }
+        if (dir === "down" && myPlayer.gridY < MAP_SIZE - 1) {
+          myPlayer.gridY++;
+          moved = true;
+        }
+        if (dir === "left" && myPlayer.gridX > 0) {
+          myPlayer.gridX--;
+          moved = true;
+        }
+        if (dir === "right" && myPlayer.gridX < MAP_SIZE - 1) {
+          myPlayer.gridX++;
+          moved = true;
+        }
+        if (moved) {
+          drawGame();
+          sendUpdate("player_update", myPlayer);
+        }
+      }
+
+      const chatInput = document.getElementById("chat-input");
+      const chatLog = document.getElementById("chat-log");
+
+      chatInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && chatInput.value.trim() !== "") {
+          appendMessage("You", chatInput.value);
+          sendUpdate("chat", chatInput.value);
+          chatInput.value = "";
+          chatInput.blur();
+        }
+      });
+
+      function appendMessage(sender, text) {
+        const msgEl = document.createElement("div");
+        msgEl.innerText = `${sender}: ${text}`;
+        chatLog.appendChild(msgEl);
+        chatLog.scrollTop = chatLog.scrollHeight;
+      }
+
+      drawGame();
+    </script>
+  </body>
+</html>
