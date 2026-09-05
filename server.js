@@ -9,8 +9,13 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
 
-// Share frontend files sitting in the main directory folder
+// Share all frontend files in the root directory
 app.use(express.static(path.join(__dirname, '.')));
+
+// Force the main URL to load the index.html page automatically
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 let players = {};
 
@@ -21,7 +26,6 @@ wss.on('connection', (ws) => {
         try {
             const data = JSON.parse(message);
             
-            // Handle when a player submits their name and joins
             if (data.type === 'join') {
                 players[playerId] = {
                     x: Math.floor(Math.random() * 400) + 50,
@@ -31,9 +35,7 @@ wss.on('connection', (ws) => {
                     chatMessage: "",
                     chatTimer: 0
                 };
-
                 ws.send(JSON.stringify({ type: 'init', id: playerId, players }));
-
                 wss.clients.forEach((client) => {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({ type: 'currentPlayers', players }));
@@ -41,11 +43,9 @@ wss.on('connection', (ws) => {
                 });
             }
 
-            // Handle player movements
             if (data.type === 'move' && players[playerId]) {
                 players[playerId].x = data.x;
                 players[playerId].y = data.y;
-                
                 wss.clients.forEach((client) => {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({ type: 'update', id: playerId, player: players[playerId] }));
@@ -53,28 +53,22 @@ wss.on('connection', (ws) => {
                 });
             }
 
-            // Handle live chat logs and speech bubbles
             if (data.type === 'chat' && players[playerId]) {
-                const cleanText = data.text.replace(/<[^>]*>/g, ''); // Safety cleanup
-                
+                const cleanText = data.text.replace(/<[^>]*>/g, '');
                 players[playerId].chatMessage = cleanText;
-                players[playerId].chatTimer = 240; // Visible for ~4 seconds
-
+                players[playerId].chatTimer = 240;
                 wss.clients.forEach((client) => {
                     if (client.readyState === WebSocket.OPEN) {
-                        // Send text stream to side chat panel
                         client.send(JSON.stringify({ type: 'msg', name: players[playerId].name, text: cleanText }));
-                        // Update player bubble state
                         client.send(JSON.stringify({ type: 'update', id: playerId, player: players[playerId] }));
                     }
                 });
             }
         } catch (e) {
-            console.error("Error reading packet details", e);
+            console.error("Packet processing error", e);
         }
     });
 
-    // Remove player when they close the browser tab
     ws.on('close', () => {
         delete players[playerId];
         wss.clients.forEach((client) => {
@@ -85,7 +79,6 @@ wss.on('connection', (ws) => {
     });
 });
 
-// Force Render to bind correctly to the network card address
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
 });
