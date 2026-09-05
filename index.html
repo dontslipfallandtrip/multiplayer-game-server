@@ -32,38 +32,41 @@
     <canvas id="gameCanvas" width="600" height="600"></canvas>
 
     <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const info = document.getElementById('info');
         const lobby = document.getElementById('lobby');
         const usernameInput = document.getElementById('usernameInput');
         const joinBtn = document.getElementById('joinBtn');
         const statusDiv = document.getElementById('status');
-        
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const info = document.getElementById('info');
 
         let ws;
         let myId = null;
         let players = {};
         const speed = 5;
-
         const keys = {};
-        window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+        
+        // Prevents browser from scrolling up/down when hitting arrow keys
+        window.addEventListener('keydown', e => {
+            if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(e.key.toLowerCase())) {
+                e.preventDefault();
+            }
+            keys[e.key.toLowerCase()] = true;
+        });
         window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
         joinBtn.addEventListener('click', () => {
             let name = usernameInput.value.trim();
             if (!name) name = "Player";
 
-            statusDiv.innerText = "Waking up server... please wait...";
+            statusDiv.innerText = "Connecting to server...";
             joinBtn.disabled = true;
 
-            // Automatically matches local or live Render WebSocket connections
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}`;
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                // Send join intent along with username
                 ws.send(JSON.stringify({ type: 'join', name: name }));
             };
 
@@ -74,21 +77,44 @@
                     myId = data.id;
                     players = data.players;
                     
-                    // Hide lobby, show live game screen
+                    // Smooth placement targets for other players
+                    for (let id in players) {
+                        players[id].targetX = players[id].x;
+                        players[id].targetY = players[id].y;
+                    }
+                    
                     lobby.style.display = 'none';
                     canvas.style.display = 'block';
                     info.style.display = 'block';
                 } else if (data.type === 'currentPlayers') {
-                    players = data.players;
+                    // Update global player dictionary list
+                    for (let id in data.players) {
+                        if (!players[id]) {
+                            players[id] = data.players[id];
+                            players[id].targetX = data.players[id].x;
+                            players[id].targetY = data.players[id].y;
+                        }
+                    }
                 } else if (data.type === 'update') {
-                    players[data.id] = data.player;
+                    if (players[data.id]) {
+                        if (data.id !== myId) {
+                            // Set linear interpolation targets for other connections to glide smoothly
+                            players[data.id].targetX = data.player.x;
+                            players[data.id].targetY = data.player.y;
+                            players[data.id].name = data.player.name;
+                            players[data.id].color = data.player.color;
+                        } else {
+                            // Sync your server authority coordinates softly in the background
+                            players[myId].color = data.player.color;
+                        }
+                    }
                 } else if (data.type === 'remove') {
                     delete players[data.id];
                 }
             };
 
             ws.onerror = () => {
-                statusDiv.innerText = "Connection failed. Retrying...";
+                statusDiv.innerText = "Connection failed. Waking up server, please try again...";
                 joinBtn.disabled = false;
             };
         });
@@ -99,6 +125,7 @@
             let moved = false;
             let p = players[myId];
 
+            // Client side prediction makes movements instant on your own screen layout
             if (keys['arrowup'] || keys['w']) { p.y -= speed; moved = true; }
             if (keys['arrowdown'] || keys['s']) { p.y += speed; moved = true; }
             if (keys['arrowleft'] || keys['a']) { p.x -= speed; moved = true; }
@@ -123,7 +150,12 @@
             for (let id in players) {
                 let p = players[id];
                 
-                // Draw Character Dot
+                // Glide positions smoothly for remote network player entities
+                if (id !== myId && p.targetX !== undefined) {
+                    p.x += (p.targetX - p.x) * 0.3;
+                    p.y += (p.targetY - p.y) * 0.3;
+                }
+                
                 ctx.fillStyle = p.color;
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
@@ -135,7 +167,6 @@
                     ctx.stroke();
                 }
 
-                // Draw Text Tag Above Circle
                 ctx.fillStyle = 'white';
                 ctx.font = 'bold 12px sans-serif';
                 ctx.textAlign = 'center';
