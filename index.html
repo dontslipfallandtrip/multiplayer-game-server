@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Multiplayer Arena with Chat</title>
+    <title>Multiplayer Arena</title>
     <style>
       body {
         margin: 0;
@@ -27,8 +27,6 @@
         max-width: 100vw;
         max-height: 100vh;
       }
-
-      /* Lobby Style Screen */
       #lobby {
         background: #2f3542;
         padding: 30px;
@@ -56,8 +54,6 @@
         text-align: center;
         box-sizing: border-box;
       }
-
-      /* Control Type Selector */
       .control-group {
         display: flex;
         justify-content: space-between;
@@ -74,13 +70,11 @@
         cursor: pointer;
         font-weight: bold;
         font-size: 13px;
-        transition: 0.2s;
       }
       .control-btn.active {
         background: #1e222b;
         border-color: #ff4757;
       }
-
       #joinBtn {
         background: #ff4757;
         color: white;
@@ -91,17 +85,12 @@
         border-radius: 4px;
         cursor: pointer;
         width: 100%;
-        transition: 0.2s;
-      }
-      #joinBtn:hover {
-        background: #ff6b81;
       }
       #status {
         font-size: 12px;
         margin-top: 12px;
         color: #a4b0be;
       }
-
       #info {
         position: absolute;
         top: 15px;
@@ -113,8 +102,6 @@
         letter-spacing: 1px;
         display: none;
       }
-
-      /* Chat System Layout */
       #chatBox {
         position: absolute;
         bottom: 20px;
@@ -128,7 +115,6 @@
         padding: 10px;
         box-sizing: border-box;
         border: 1px solid #444;
-        pointer-events: auto;
       }
       #chatMessages {
         flex: 1;
@@ -137,7 +123,6 @@
         margin-bottom: 5px;
         word-wrap: break-word;
         color: #f1f2f6;
-        padding-right: 5px;
       }
       #chatInput {
         background: #1e222b;
@@ -147,15 +132,8 @@
         color: white;
         font-size: 13px;
         outline: none;
-        box-sizing: border-box;
         width: 100%;
-      }
-      #chatMessages::-webkit-scrollbar {
-        width: 4px;
-      }
-      #chatMessages::-webkit-scrollbar-thumb {
-        background: #555;
-        border-radius: 2px;
+        box-sizing: border-box;
       }
     </style>
   </head>
@@ -163,24 +141,19 @@
     <div id="lobby">
       <h2>ARENA LOBBY</h2>
       <input type="text" id="usernameInput" placeholder="Enter Name..." maxlength="10" />
-
       <div class="control-group">
         <button type="button" class="control-btn active" id="btnKbm">⌨️ KEYBOARD</button>
         <button type="button" class="control-btn" id="btnTouch">📱 TOUCH SCREEN</button>
       </div>
-
       <button id="joinBtn">JOIN MATCH</button>
-      <div id="status">Choose controls and connect to server</div>
+      <div id="status">Connecting directly via host...</div>
     </div>
-
     <div id="info">
-      Move your character! Press
+      Press
       <b>Enter</b>
-      to chat.
+      to chat!
     </div>
     <canvas id="gameCanvas" width="600" height="600"></canvas>
-
-    <!-- Game Chat Element -->
     <div id="chatBox">
       <div id="chatMessages"></div>
       <input type="text" id="chatInput" placeholder="Press Enter to type..." maxlength="50" />
@@ -199,14 +172,13 @@
       const chatMessages = document.getElementById("chatMessages");
       const chatInput = document.getElementById("chatInput");
 
-      let ws;
-      let myId = null;
-      let players = {};
-      const speed = 5;
-      const keys = {};
-      let controlType = "kbm";
-      let isChatting = false;
-
+      let ws,
+        myId = null,
+        players = {},
+        speed = 5,
+        keys = {},
+        controlType = "kbm",
+        isChatting = false;
       let joystick = { active: false, startX: 0, startY: 0, curX: 0, curY: 0, maxRadius: 40, moveX: 0, moveY: 0 };
 
       btnKbm.addEventListener("click", () => {
@@ -227,194 +199,88 @@
             chatInput.focus();
           } else {
             const msg = chatInput.value.trim();
-            if (msg && ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: "chat", text: msg }));
-            }
+            if (msg && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "chat", text: msg }));
             chatInput.value = "";
             chatInput.blur();
             isChatting = false;
           }
           return;
         }
-
         if (isChatting) return;
-
-        if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(e.key.toLowerCase())) {
-          e.preventDefault();
-        }
+        if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(e.key.toLowerCase())) e.preventDefault();
         keys[e.key.toLowerCase()] = true;
       });
-
       window.addEventListener("keyup", (e) => {
-        if (isChatting) return;
-        keys[e.key.toLowerCase()] = false;
+        if (!isChatting) keys[e.key.toLowerCase()] = false;
       });
 
       window.addEventListener("touchstart", (e) => {
         if (controlType !== "touch" || !myId || isChatting) return;
-        const touch = e.touches[0];
         joystick.active = true;
-        joystick.startX = touch.clientX;
-        joystick.startY = touch.clientY;
-        joystick.curX = touch.clientX;
-        joystick.curY = touch.clientY;
+        joystick.startX = e.touches[0].clientX;
+        joystick.startY = e.touches[0].clientY;
+        joystick.curX = e.touches[0].clientX;
+        joystick.curY = e.touches[0].clientY;
       });
-
       window.addEventListener("touchmove", (e) => {
         if (!joystick.active) return;
-        const touch = e.touches[0];
-        joystick.curX = touch.clientX;
-        joystick.curY = touch.clientY;
-
-        let dx = joystick.curX - joystick.startX;
-        let dy = joystick.curY - joystick.startY;
-        let dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist > joystick.maxRadius) {
-          joystick.moveX = dx / dist;
-          joystick.moveY = dy / dist;
-        } else {
-          joystick.moveX = dx / joystick.maxRadius;
-          joystick.moveY = dy / joystick.maxRadius;
-        }
+        joystick.curX = e.touches[0].clientX;
+        joystick.curY = e.touches[0].clientY;
+        let dx = joystick.curX - joystick.startX,
+          dy = joystick.curY - joystick.startY,
+          dist = Math.sqrt(dx * dx + dy * dy);
+        joystick.moveX = dist > joystick.maxRadius ? dx / dist : dx / joystick.maxRadius;
+        joystick.moveY = dist > joystick.maxRadius ? dy / dist : dy / joystick.maxRadius;
       });
-
       window.addEventListener("touchend", () => {
         joystick.active = false;
         joystick.moveX = 0;
         joystick.moveY = 0;
       });
-      joinBtn.addEventListener("click", () => {
-        let name = usernameInput.value.trim();
-        if (!name) name = "Player";
 
-        statusDiv.innerText = "Connecting to server...";
+      joinBtn.addEventListener("click", () => {
+        let name = usernameInput.value.trim() || "Player";
         joinBtn.disabled = true;
 
+        // PERFECT SYNC: Connects seamlessly to the hosting domain automatically
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${protocol}//${window.location.host}`;
-        ws = new WebSocket(wsUrl);
+        ws = new WebSocket(`${protocol}//${window.location.host}`);
 
-        ws.onopen = () => {
-          ws.send(JSON.stringify({ type: "join", name: name }));
-        };
-
+        ws.onopen = () => ws.send(JSON.stringify({ type: "join", name: name }));
         ws.onmessage = (event) => {
           const data = JSON.parse(event.data);
-
           if (data.type === "init") {
             myId = data.id;
             players = data.players;
-
-            for (let id in players) {
-              players[id].targetX = players[id].x;
-              players[id].targetY = players[id].y;
-            }
-
             lobby.style.display = "none";
             canvas.style.display = "block";
             info.style.display = "block";
             chatBox.style.display = "flex";
-
-            if (controlType === "touch") {
-              info.innerHTML = "Drag anywhere to move! Tap Chat box to talk.";
-            } else {
-              info.innerHTML = "Move with <b>Arrow Keys / WASD</b>. Press <b>Enter</b> to chat!";
-            }
           } else if (data.type === "currentPlayers") {
-            for (let id in data.players) {
-              if (!players[id]) {
-                players[id] = data.players[id];
-                players[id].targetX = data.players[id].x;
-                players[id].targetY = data.players[id].y;
-              }
-            }
+            for (let id in data.players) if (!players[id]) players[id] = data.players[id];
           } else if (data.type === "update") {
             if (players[data.id]) {
               if (data.id !== myId) {
-                players[data.id].targetX = data.player.x;
-                players[data.id].targetY = data.player.y;
-                players[data.id].name = data.player.name;
-                players[data.id].color = data.player.color;
-                players[data.id].chatMessage = data.player.chatMessage;
-                players[data.id].chatTimer = data.player.chatTimer;
-              } else {
-                players[myId].color = data.player.color;
-                players[myId].chatMessage = data.player.chatMessage;
-                players[myId].chatTimer = data.player.chatTimer;
+                players[data.id].x += (data.player.x - players[data.id].x) * 0.3;
+                players[data.id].y += (data.player.y - players[data.id].y) * 0.3;
               }
+              players[data.id].chatMessage = data.player.chatMessage;
+              players[data.id].chatTimer = data.player.chatTimer;
             }
           } else if (data.type === "remove") {
             delete players[data.id];
           } else if (data.type === "msg") {
-            const messageElement = document.createElement("div");
-            messageElement.innerHTML = `<strong>${data.name}:</strong> ${data.text}`;
-            chatMessages.appendChild(messageElement);
+            const el = document.createElement("div");
+            el.innerHTML = `<strong>${data.name}:</strong> ${data.text}`;
+            chatMessages.appendChild(el);
             chatMessages.scrollTop = chatMessages.scrollHeight;
           }
         };
-
         ws.onerror = () => {
-          statusDiv.innerText = "Connection failed. Retrying...";
           joinBtn.disabled = false;
+          statusDiv.innerText = "Error. Retry in a moment.";
         };
       });
-
-      function updateMovement() {
-        if (!myId || !players[myId] || isChatting) return;
-
-        let moved = false;
-        let p = players[myId];
-
-        if (controlType === "kbm") {
-          if (keys["arrowup"] || keys["w"]) {
-            p.y -= speed;
-            moved = true;
-          }
-          if (keys["arrowdown"] || keys["s"]) {
-            p.y += speed;
-            moved = true;
-          }
-          if (keys["arrowleft"] || keys["a"]) {
-            p.x -= speed;
-            moved = true;
-          }
-          if (keys["arrowright"] || keys["d"]) {
-            p.x += speed;
-            moved = true;
-          }
-        } else if (controlType === "touch" && joystick.active) {
-          p.x += joystick.moveX * speed;
-          p.y += joystick.moveY * speed;
-          moved = true;
-        }
-
-        p.x = Math.max(15, Math.min(canvas.width - 15, p.x));
-        p.y = Math.max(15, Math.min(canvas.height - 15, p.y));
-
-        if (moved && ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "move", x: p.x, y: p.y }));
-        }
-      }
-
-      function drawVirtualJoystick() {
-        if (!joystick.active) return;
-        ctx.save();
-        ctx.globalAlpha = 0.15;
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        const rect = canvas.getBoundingClientRect();
-        const canvasX = ((joystick.startX - rect.left) / rect.width) * canvas.width;
-        const canvasY = ((joystick.startY - rect.top) / rect.height) * canvas.height;
-        ctx.arc(canvasX, canvasY, joystick.maxRadius, 0, Math.PI * 2);
-        ctx.fill();
-        const currentCanvasX = ((joystick.curX - rect.left) / rect.width) * canvas.width;
-        const currentCanvasY = ((joystick.curY - rect.top) / rect.height) * canvas.height;
-        ctx.beginPath();
-        ctx.arc(currentCanvasX, currentCanvasY, 20, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
 
       function drawGame() {
         if (canvas.style.display === "none") {
@@ -422,41 +288,54 @@
           return;
         }
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (controlType === "kbm" && !isChatting) {
+          if (keys["arrowup"] || keys["w"]) players[myId].y -= speed;
+          if (keys["arrowdown"] || keys["s"]) players[myId].y += speed;
+          if (keys["arrowleft"] || keys["a"]) players[myId].x -= speed;
+          if (keys["arrowright"] || keys["d"]) players[myId].x += speed;
+        } else if (controlType === "touch" && joystick.active) {
+          players[myId].x += joystick.moveX * speed;
+          players[myId].y += joystick.moveY * speed;
+        }
+
+        if (myId && players[myId]) {
+          players[myId].x = Math.max(15, Math.min(canvas.width - 15, players[myId].x));
+          players[myId].y = Math.max(15, Math.min(canvas.height - 15, players[myId].y));
+          if (ws && ws.readyState === WebSocket.OPEN)
+            ws.send(JSON.stringify({ type: "move", x: players[myId].x, y: players[myId].y }));
+        }
+
         for (let id in players) {
           let p = players[id];
-          if (id !== myId && p.targetX !== undefined) {
-            p.x += (p.targetX - p.x) * 0.3;
-            p.y += (p.targetY - p.y) * 0.3;
-          }
           ctx.fillStyle = p.color;
           ctx.beginPath();
           ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
           ctx.fill();
           if (id === myId) {
-            ctx.strokeStyle = "#ffffff";
+            ctx.strokeStyle = "#fff";
             ctx.lineWidth = 3;
             ctx.stroke();
           }
           ctx.fillStyle = "white";
           ctx.font = "bold 12px sans-serif";
           ctx.textAlign = "center";
-          ctx.fillText(p.name || "Guest", p.x, p.y - 22);
+          ctx.fillText(p.name, p.x, p.y - 22);
+
           if (p.chatMessage && p.chatTimer > 0) {
             p.chatTimer--;
             ctx.save();
             ctx.font = "11px sans-serif";
-            let textWidth = ctx.measureText(p.chatMessage).width;
+            let w = ctx.measureText(p.chatMessage).width;
             ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
             ctx.beginPath();
-            ctx.roundRect(p.x - textWidth / 2 - 6, p.y - 52, textWidth + 12, 20, 4);
+            ctx.roundRect(p.x - w / 2 - 6, p.y - 52, w + 12, 20, 4);
             ctx.fill();
-            ctx.fillStyle = "#111111";
+            ctx.fillStyle = "#111";
             ctx.fillText(p.chatMessage, p.x, p.y - 38);
             ctx.restore();
           }
         }
-        if (controlType === "touch") drawVirtualJoystick();
-        updateMovement();
         requestAnimationFrame(drawGame);
       }
       requestAnimationFrame(drawGame);
