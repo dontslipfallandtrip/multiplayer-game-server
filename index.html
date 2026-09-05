@@ -6,23 +6,42 @@
     <title>Multiplayer Arena</title>
     <style>
         body { margin: 0; background: #1a1a1a; display: flex; justify-content: center; align-items: center; height: 100vh; color: white; font-family: sans-serif; overflow: hidden; }
-        canvas { background: #111; border: 3px solid #ff4757; box-shadow: 0 0 20px rgba(255, 71, 87, 0.3); border-radius: 4px; }
-        #info { position: absolute; top: 15px; text-align: center; width: 100%; pointer-events: none; text-transform: uppercase; font-size: 14px; letter-spacing: 1px; }
+        canvas { background: #111; border: 3px solid #ff4757; box-shadow: 0 0 20px rgba(255, 71, 87, 0.3); border-radius: 4px; display: none; }
+        
+        /* Lobby Style Screen */
+        #lobby { background: #2f3542; padding: 30px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); text-align: center; width: 320px; z-index: 10; }
+        #lobby h2 { margin-top: 0; color: #ff4757; letter-spacing: 1px; }
+        #usernameInput { width: 90%; padding: 10px; margin: 15px 0; border: none; border-radius: 4px; background: #1e222b; color: white; font-size: 16px; text-align: center; }
+        #joinBtn { background: #ff4757; color: white; border: none; padding: 12px 25px; font-size: 16px; font-weight: bold; border-radius: 4px; cursor: pointer; width: 100%; transition: 0.2s; }
+        #joinBtn:hover { background: #ff6b81; }
+        #status { font-size: 12px; margin-top: 10px; color: #a4b0be; }
+
+        #info { position: absolute; top: 15px; text-align: center; width: 100%; pointer-events: none; text-transform: uppercase; font-size: 14px; letter-spacing: 1px; display: none; }
     </style>
 </head>
 <body>
-    <div id="info">Move with <b>Arrow Keys</b> or <b>WASD</b>. Open multiple tabs to play!</div>
+    <!-- Lobby Screen Interface -->
+    <div id="lobby">
+        <h2>ARENA LOBBY</h2>
+        <input type="text" id="usernameInput" placeholder="Enter Name..." maxlength="10">
+        <button id="joinBtn">JOIN MATCH</button>
+        <div id="status">Click Join to connect to the server</div>
+    </div>
+
+    <div id="info">Move with <b>Arrow Keys / WASD</b>. Open multiple tabs to play!</div>
     <canvas id="gameCanvas" width="600" height="600"></canvas>
 
     <script>
+        const lobby = document.getElementById('lobby');
+        const usernameInput = document.getElementById('usernameInput');
+        const joinBtn = document.getElementById('joinBtn');
+        const statusDiv = document.getElementById('status');
+        
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const info = document.getElementById('info');
 
-        // Automatically matches local or live Render WebSocket connections
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}`;
-        const ws = new WebSocket(wsUrl);
-
+        let ws;
         let myId = null;
         let players = {};
         const speed = 5;
@@ -31,20 +50,48 @@
         window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
         window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            
-            if (data.type === 'init') {
-                myId = data.id;
-                players = data.players;
-            } else if (data.type === 'currentPlayers') {
-                players = data.players;
-            } else if (data.type === 'update') {
-                players[data.id] = data.player;
-            } else if (data.type === 'remove') {
-                delete players[data.id];
-            }
-        };
+        joinBtn.addEventListener('click', () => {
+            let name = usernameInput.value.trim();
+            if (!name) name = "Player";
+
+            statusDiv.innerText = "Waking up server... please wait...";
+            joinBtn.disabled = true;
+
+            // Automatically matches local or live Render WebSocket connections
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}`;
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                // Send join intent along with username
+                ws.send(JSON.stringify({ type: 'join', name: name }));
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'init') {
+                    myId = data.id;
+                    players = data.players;
+                    
+                    // Hide lobby, show live game screen
+                    lobby.style.display = 'none';
+                    canvas.style.display = 'block';
+                    info.style.display = 'block';
+                } else if (data.type === 'currentPlayers') {
+                    players = data.players;
+                } else if (data.type === 'update') {
+                    players[data.id] = data.player;
+                } else if (data.type === 'remove') {
+                    delete players[data.id];
+                }
+            };
+
+            ws.onerror = () => {
+                statusDiv.innerText = "Connection failed. Retrying...";
+                joinBtn.disabled = false;
+            };
+        });
 
         function updateMovement() {
             if (!myId || !players[myId]) return;
@@ -57,32 +104,42 @@
             if (keys['arrowleft'] || keys['a']) { p.x -= speed; moved = true; }
             if (keys['arrowright'] || keys['d']) { p.x += speed; moved = true; }
 
-            // Wall collisions
             p.x = Math.max(15, Math.min(canvas.width - 15, p.x));
             p.y = Math.max(15, Math.min(canvas.height - 15, p.y));
 
-            if (moved) {
+            if (moved && ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'move', x: p.x, y: p.y }));
             }
         }
 
         function drawGame() {
+            if (canvas.style.display === 'none') {
+                requestAnimationFrame(drawGame);
+                return;
+            }
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw every player connected to the server
             for (let id in players) {
                 let p = players[id];
+                
+                // Draw Character Dot
                 ctx.fillStyle = p.color;
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
                 ctx.fill();
 
-                // Draw a targeting ring around your own piece
                 if (id === myId) {
                     ctx.strokeStyle = '#ffffff';
                     ctx.lineWidth = 3;
                     ctx.stroke();
                 }
+
+                // Draw Text Tag Above Circle
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(p.name || "Guest", p.x, p.y - 22);
             }
 
             updateMovement();
