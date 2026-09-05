@@ -9,6 +9,7 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
 
+// Serve the frontend HTML/JS files sitting in the same folder
 app.use(express.static(path.join(__dirname, '.')));
 
 let players = {};
@@ -63,6 +64,7 @@ wss.on('connection', (ws) => {
     });
 });
 
-server.listen(PORT, () => {
+// Forcing Render to bind correctly to the network card address '0.0.0.0'
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
 });
