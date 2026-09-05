@@ -1,11 +1,13 @@
 {
-  "name": "multiplayer-server",
+  "name": "multiplayer-canvas-arena",
   "version": "1.0.0",
+  "description": "Multiplayer sandbox game for web services",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "express": "^4.19.2",
+    "ws": "^8.16.0"
   }
 }
