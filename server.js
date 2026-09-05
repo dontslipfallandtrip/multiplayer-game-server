@@ -1,100 +1,71 @@
+const express = require('express');
 const http = require('http');
-const { WebSocketServer, OPEN } = require('ws');
+const WebSocket = require('ws');
+const path = require('path');
 
-const PORT = process.env.PORT || 8080;
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-// Create a basic HTTP server so Render can perform successful health checks
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Multiplayer Game Server is Online');
-});
+const PORT = process.env.PORT || 3000;
 
-// Force the WebSocket Server to ONLY look for the secure Render proxy path
-const wss = new WebSocketServer({ noServer: true });
+// Serve the frontend HTML/JS files sitting in the same folder
+app.use(express.static(path.join(__dirname, '.')));
 
-server.on('upgrade', (request, socket, head) => {
-    const { pathname } = new URL(request.url, `http://${request.headers.host}`);
-
-    if (pathname === '/ws') {
-        wss.handleUpgrade(request, socket, head, (ws) => {
-            wss.emit('connection', ws, request);
-        });
-    } else {
-        socket.destroy();
-    }
-});
-
-console.log(`Multiplayer server running globally on port ${PORT}`);
-
-const clients = new Map();
+let players = {};
 
 wss.on('connection', (ws) => {
-    console.log('A player connected.');
+    // Generate a unique ID for each browser tab that connects
+    const playerId = Math.random().toString(36).substr(2, 9);
+    
+    // Assign a random starting point and color
+    players[playerId] = {
+        x: Math.floor(Math.random() * 400) + 50,
+        y: Math.floor(Math.random() * 400) + 50,
+        color: '#' + Math.floor(Math.random()*16777215).toString(16)
+    };
 
+    // Initialize the current player
+    ws.send(JSON.stringify({ type: 'init', id: playerId, players }));
+
+    // Update all clients with the latest list of players
+    wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({ type: 'currentPlayers', players }));
+        }
+    });
+    
+    // Listen for movement updates from players
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-            
-            if (data.type === 'join' || data.type === 'player_update') {
-                clients.set(ws, { id: data.id, name: data.name, state: data.payload });
+            if (data.type === 'move' && players[playerId]) {
+                players[playerId].x = data.x;
+                players[playerId].y = data.y;
                 
-                if (data.type === 'join') {
-                    clients.forEach((clientInfo, clientWs) => {
-                        if (clientWs !== ws) {
-                            ws.send(JSON.stringify({
-                                type: 'player_update',
-                                id: clientInfo.id,
-                                name: clientInfo.name,
-                                payload: clientInfo.state
-                            }));
-                        }
-                    });
-                }
+                // Broadcast the player's new position to everyone online
+                wss.clients.forEach((client) => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({ type: 'update', id: playerId, player: players[playerId] }));
+                    }
+                });
             }
-
-            wss.clients.forEach((client) => {
-                if (client !== ws && client.readyState === OPEN) {
-                    if (data.type === 'join' || data.type === 'player_update') {
-                        client.send(JSON.stringify({
-                            type: 'player_update',
-                            id: data.id,
-                            name: data.name,
-                            payload: data.payload
-                        }));
-                    }
-                    if (data.type === 'chat') {
-                        client.send(JSON.stringify({
-                            type: 'chat',
-                            id: data.id,
-                            sender: data.name,
-                            message: data.payload
-                        }));
-                    }
-                }
-            });
-
-        } catch (error) {
-            console.error('Data error:', error);
+        } catch (e) {
+            console.error("Invalid message format received", e);
         }
     });
 
+    // Clean up when a player closes their tab
     ws.on('close', () => {
-        const clientInfo = clients.get(ws);
-        if (clientInfo) {
-            console.log(`Player ${clientInfo.name} disconnected.`);
-            wss.clients.forEach((client) => {
-                if (client !== ws && client.readyState === OPEN) {
-                    client.send(JSON.stringify({
-                        type: 'leave',
-                        id: clientInfo.id
-                    }));
-                }
-            });
-            clients.delete(ws);
-        }
+        delete players[playerId];
+        wss.clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify({ type: 'remove', id: playerId }));
+            }
+        });
     });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server actively listening on port ${PORT}`);
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
