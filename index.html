@@ -1,345 +1,95 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>16x16 Multiplayer Game</title>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Arena</title>
     <style>
-      body {
-        margin: 0;
-        padding: 0;
-        background-color: #222;
-        font-family: Arial, sans-serif;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-        overflow-y: auto;
-      }
-      #game-container {
-        position: relative;
-        width: 640px;
-        height: 640px;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-        background: #4caf50;
-      }
-      canvas {
-        background: #4caf50; /* Green Plot Floor */
-        display: block;
-      }
-      #chat-container {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        width: 220px;
-        background: rgba(0, 0, 0, 0.7);
-        padding: 8px;
-        border-radius: 6px;
-        color: white;
-        z-index: 5;
-        box-sizing: border-box;
-        display: none;
-      }
-      #chat-log {
-        height: 120px;
-        overflow-y: auto;
-        margin-bottom: 5px;
-        font-size: 12px;
-        word-wrap: break-word;
-      }
-      #chat-input {
-        width: 100%;
-        padding: 4px;
-        box-sizing: border-box;
-        background: #fff;
-        border: none;
-        border-radius: 3px;
-        font-size: 12px;
-      }
-      #login-screen {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 640px;
-        height: 640px;
-        background: rgba(0, 0, 0, 0.85);
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        z-index: 10;
-        color: white;
-      }
-      #name-input {
-        padding: 10px;
-        font-size: 16px;
-        border-radius: 4px;
-        border: none;
-        margin-bottom: 10px;
-        width: 200px;
-        text-align: center;
-      }
-      #start-btn {
-        padding: 10px 20px;
-        font-size: 16px;
-        background: #4caf50;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-      #status-text {
-        margin-top: 15px;
-        font-size: 14px;
-        color: #ffcc00;
-      }
-      #mobile-controls {
-        display: none;
-        grid-template-columns: repeat(3, 60px);
-        grid-template-rows: repeat(3, 60px);
-        gap: 10px;
-        margin-top: 20px;
-        z-index: 8;
-      }
-      .dpad-btn {
-        background: #444;
-        color: white;
-        border: 2px solid #666;
-        border-radius: 10px;
-        font-size: 24px;
-        font-weight: bold;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        user-select: none;
-        cursor: pointer;
-      }
-      .dpad-btn:active {
-        background: #666;
-      }
-      @media (max-width: 660px) {
-        #game-container,
-        #login-screen {
-          width: 320px;
-          height: 320px;
-        }
-        canvas {
-          width: 320px;
-          height: 320px;
-        }
-        #mobile-controls {
-          display: grid;
-        }
-      }
+        body { margin: 0; background: #1a1a1a; display: flex; justify-content: center; align-items: center; height: 100vh; color: white; font-family: sans-serif; overflow: hidden; }
+        canvas { background: #111; border: 3px solid #ff4757; box-shadow: 0 0 20px rgba(255, 71, 87, 0.3); border-radius: 4px; }
+        #info { position: absolute; top: 15px; text-align: center; width: 100%; pointer-events: none; text-transform: uppercase; font-size: 14px; letter-spacing: 1px; }
     </style>
-  </head>
-  <body>
-    <div id="game-container">
-      <div id="login-screen">
-        <h2>Enter Your Username</h2>
-        <input type="text" id="name-input" placeholder="Nickname..." maxlength="12" />
-        <button id="start-btn" onclick="joinGame()">Join Game</button>
-        <div id="status-text"></div>
-      </div>
-      <div id="chat-container">
-        <div id="chat-log"></div>
-        <input type="text" id="chat-input" placeholder="Tap here to chat..." />
-      </div>
-      <canvas id="gameCanvas" width="640" height="640"></canvas>
-    </div>
-    <div id="mobile-controls">
-      <div></div>
-      <div class="dpad-btn" ontouchstart="handleMobileMove('up')">▲</div>
-      <div></div>
-      <div class="dpad-btn" ontouchstart="handleMobileMove('left')">◀</div>
-      <div></div>
-      <div class="dpad-btn" ontouchstart="handleMobileMove('right')">▶</div>
-      <div></div>
-      <div class="dpad-btn" ontouchstart="handleMobileMove('down')">▼</div>
-      <div></div>
-    </div>
+</head>
+<body>
+    <div id="info">Move with <b>Arrow Keys</b> or <b>WASD</b>. Open multiple tabs to play!</div>
+    <canvas id="gameCanvas" width="600" height="600"></canvas>
+
     <script>
-      const canvas = document.getElementById("gameCanvas");
-      const ctx = canvas.getContext("2d");
-      const statusText = document.getElementById("status-text");
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
 
-      const MAP_SIZE = 16;
-      const TILE_SIZE = 40;
+        // Automatically matches local or live Render WebSocket connections
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}`;
+        const ws = new WebSocket(wsUrl);
 
-      let socket;
-      let myId = "ID_" + Math.random().toString(36).substr(2, 4).toUpperCase();
-      let myPlayer = {
-        name: "Guest",
-        gridX: Math.floor(Math.random() * MAP_SIZE),
-        gridY: Math.floor(Math.random() * MAP_SIZE),
-        color: "#" + Math.floor(Math.random() * 16777215).toString(16),
-      };
+        let myId = null;
+        let players = {};
+        const speed = 5;
 
-      let remotePlayers = {};
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-      if ("ontouchstart" in window) {
-        document.getElementById("mobile-controls").style.display = "grid";
-      }
-
-      function joinGame() {
-        const inputName = document.getElementById("name-input").value.trim();
-        if (inputName !== "") {
-          myPlayer.name = inputName;
-        }
-
-        statusText.innerText = "Connecting to server... (May take 1 minute if waking up)";
-        document.getElementById("start-btn").disabled = true;
-
-        // Live Render Server URL link integrated directly:
-        socket = new WebSocket("wss://://onrender.com");
-
-        socket.onopen = () => {
-          document.getElementById("login-screen").style.display = "none";
-          document.getElementById("chat-container").style.display = "block";
-          appendMessage("System", `Connected as ${myPlayer.name}!`);
-          sendUpdate("join", myPlayer);
-          drawGame();
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'init') {
+                myId = data.id;
+                players = data.players;
+            } else if (data.type === 'currentPlayers') {
+                players = data.players;
+            } else if (data.type === 'update') {
+                players[data.id] = data.player;
+            } else if (data.type === 'remove') {
+                delete players[data.id];
+            }
         };
 
-        socket.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          if (data.type === "player_update") {
-            remotePlayers[data.id] = { ...data.payload, name: data.name };
-            drawGame();
-          }
-          if (data.type === "chat") {
-            appendMessage(data.sender, data.message);
-          }
-          if (data.type === "leave") {
-            delete remotePlayers[data.id];
-            drawGame();
-          }
-        };
+        function updateMovement() {
+            if (!myId || !players[myId]) return;
 
-        socket.onerror = (error) => {
-          statusText.innerText = "Connection error. Is the server running?";
-          document.getElementById("start-btn").disabled = false;
-        };
+            let moved = false;
+            let p = players[myId];
 
-        socket.onclose = () => {
-          statusText.innerText = "Disconnected from server.";
-          document.getElementById("start-btn").disabled = false;
-        };
-      }
+            if (keys['arrowup'] || keys['w']) { p.y -= speed; moved = true; }
+            if (keys['arrowdown'] || keys['s']) { p.y += speed; moved = true; }
+            if (keys['arrowleft'] || keys['a']) { p.x -= speed; moved = true; }
+            if (keys['arrowright'] || keys['d']) { p.x += speed; moved = true; }
 
-      function sendUpdate(type, payload) {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ id: myId, name: myPlayer.name, type: type, payload: payload }));
-        }
-      }
+            // Wall collisions
+            p.x = Math.max(15, Math.min(canvas.width - 15, p.x));
+            p.y = Math.max(15, Math.min(canvas.height - 15, p.y));
 
-      function drawGame() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
-        for (let i = 0; i <= MAP_SIZE; i++) {
-          ctx.beginPath();
-          ctx.moveTo(i * TILE_SIZE, 0);
-          ctx.lineTo(i * TILE_SIZE, canvas.height);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(0, i * TILE_SIZE);
-          ctx.lineTo(canvas.width, i * TILE_SIZE);
-          ctx.stroke();
+            if (moved) {
+                ws.send(JSON.stringify({ type: 'move', x: p.x, y: p.y }));
+            }
         }
-        for (let id in remotePlayers) {
-          let p = remotePlayers[id];
-          drawCharacter(p.gridX, p.gridY, p.color, p.name);
-        }
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          drawCharacter(myPlayer.gridX, myPlayer.gridY, myPlayer.color, myPlayer.name);
-        }
-      }
 
-      function drawCharacter(gridX, gridY, color, name) {
-        const pixelX = gridX * TILE_SIZE + TILE_SIZE / 2;
-        const pixelY = gridY * TILE_SIZE + TILE_SIZE / 2;
-        ctx.beginPath();
-        ctx.arc(pixelX, pixelY, 14, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
-        ctx.closePath();
-        ctx.fillStyle = "white";
-        ctx.font = "bold 11px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText(name, pixelX, pixelY - 18);
-      }
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      window.addEventListener("keydown", (e) => {
-        if (!socket || socket.readyState !== WebSocket.OPEN || document.activeElement === chatInput) return;
-        let moved = false;
-        if ((e.key === "ArrowUp" || e.key === "w") && myPlayer.gridY > 0) {
-          myPlayer.gridY--;
-          moved = true;
-        }
-        if ((e.key === "ArrowDown" || e.key === "s") && myPlayer.gridY < MAP_SIZE - 1) {
-          myPlayer.gridY++;
-          moved = true;
-        }
-        if ((e.key === "ArrowLeft" || e.key === "a") && myPlayer.gridX > 0) {
-          myPlayer.gridX--;
-          moved = true;
-        }
-        if ((e.key === "ArrowRight" || e.key === "d") && myPlayer.gridX < MAP_SIZE - 1) {
-          myPlayer.gridX++;
-          moved = true;
-        }
-        if (moved) {
-          drawGame();
-          sendUpdate("player_update", myPlayer);
-        }
-      });
+            // Draw every player connected to the server
+            for (let id in players) {
+                let p = players[id];
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 15, 0, Math.PI * 2);
+                ctx.fill();
 
-      function handleMobileMove(dir) {
-        if (!socket || socket.readyState !== WebSocket.OPEN) return;
-        let moved = false;
-        if (dir === "up" && myPlayer.gridY > 0) {
-          myPlayer.gridY--;
-          moved = true;
-        }
-        if (dir === "down" && myPlayer.gridY < MAP_SIZE - 1) {
-          myPlayer.gridY++;
-          moved = true;
-        }
-        if (dir === "left" && myPlayer.gridX > 0) {
-          myPlayer.gridX--;
-          moved = true;
-        }
-        if (dir === "right" && myPlayer.gridX < MAP_SIZE - 1) {
-          myPlayer.gridX++;
-          moved = true;
-        }
-        if (moved) {
-          drawGame();
-          sendUpdate("player_update", myPlayer);
-        }
-      }
+                // Draw a targeting ring around your own piece
+                if (id === myId) {
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
+            }
 
-      const chatInput = document.getElementById("chat-input");
-      const chatLog = document.getElementById("chat-log");
-
-      chatInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && chatInput.value.trim() !== "") {
-          appendMessage("You", chatInput.value);
-          sendUpdate("chat", chatInput.value);
-          chatInput.value = "";
-          chatInput.blur();
+            updateMovement();
+            requestAnimationFrame(drawGame);
         }
-      });
 
-      function appendMessage(sender, text) {
-        const msgEl = document.createElement("div");
-        msgEl.innerText = `${sender}: ${text}`;
-        chatLog.appendChild(msgEl);
-        chatLog.scrollTop = chatLog.scrollHeight;
-      }
-
-      drawGame();
+        requestAnimationFrame(drawGame);
     </script>
-  </body>
+</body>
 </html>
